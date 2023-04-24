@@ -63,8 +63,8 @@ public class Book {
     private Double cost;
 
     public Book(String title, String description, String imageURL, String publication, Integer count, String binding, Set<Genre> genres, Set<Author> authors, BookCategory bookCategory, Double cost) {
-        this.title = title;
-        this.description = description;
+        this .title = title;
+        this.description =description;
         this.imageURL = imageURL;
         this.publication = publication;
         this.count = count;
