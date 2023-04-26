@@ -5,13 +5,12 @@ import lombok.NoArgsConstructor;
 
 import javax.persistence.*;
 import javax.validation.constraints.NotBlank;
-import java.util.Set;
 
 @Entity
-@Table(name = "booksCategory")
+@Table(name = "productCategory")
 @Data
 @NoArgsConstructor
-public class BookCategory {
+public class ProductCategory {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -24,7 +23,7 @@ public class BookCategory {
     @Column(columnDefinition = "LONGTEXT")
     private @NotBlank String description;
 
-    public BookCategory(String title, String description) {
+    public ProductCategory(String title, String description) {
         this.title = title;
         this.description = description;
     }

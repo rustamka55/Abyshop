@@ -7,10 +7,10 @@ import javax.persistence.*;
 import javax.validation.constraints.NotBlank;
 
 @Entity
-@Table(name = "genres")
+@Table(name = "tags")
 @Data
 @NoArgsConstructor
-public class Genre {
+public class Tag {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -22,7 +22,7 @@ public class Genre {
     @Column(columnDefinition = "LONGTEXT")
     private @NotBlank String description;
 
-    public Genre(String title, String description) {
+    public Tag(String title, String description) {
         this.title = title;
         this.description = description;
     }

@@ -2,10 +2,9 @@ package com.web.jwtauth.controllers;
 
 import com.web.jwtauth.jms.Message;
 import com.web.jwtauth.models.*;
-import com.web.jwtauth.payload.request.AddAuthorRequest;
-import com.web.jwtauth.payload.request.AddBookRequest;
+import com.web.jwtauth.payload.request.AddProductRequest;
 import com.web.jwtauth.payload.request.AddCategoryRequest;
-import com.web.jwtauth.payload.request.AddGenreRequest;
+import com.web.jwtauth.payload.request.AddTagRequest;
 import com.web.jwtauth.payload.response.MessageResponse;
 import com.web.jwtauth.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,16 +23,13 @@ import java.util.*;
 public class TestController {
 
     @Autowired
-    BookRepository bookRepository;
-
-    @Autowired
-    AuthorRepository authorRepository;
+    ProductRepository productRepository;
 
     @Autowired
     CategoryRepository categoryRepository;
 
     @Autowired
-    GenreRepository genreRepository;
+    TagsRepository tagsRepository;
 
     @Autowired
     Message message;
@@ -55,269 +51,192 @@ public class TestController {
     public ResponseEntity<?> getMessage() throws JMSException {
         String receiveMessage = message.receiveMessage();
         return  ResponseEntity.ok()
-                .body("Message " + receiveMessage + " get from queue");
+                .body(new MessageResponse("Message " + receiveMessage + " get from queue"));
     }
-
-    @PostMapping("/addBook")
+    @PostMapping("/addProduct")
     @PreAuthorize("hasRole('MODERATOR') or hasRole('ADMIN')")
-    public ResponseEntity<?> addBook(@RequestBody AddBookRequest addBookRequest) {
-        if(!(addBookRequest.getTitle().isPresent() || addBookRequest.getDescription().isPresent()
-                || addBookRequest.getCount().isPresent() || addBookRequest.getGenres().isPresent()
-                || addBookRequest.getAuthors().isPresent()
-                || addBookRequest.getBookCategory().isPresent() || addBookRequest.getCost().isPresent())){
+    public ResponseEntity<?> addProduct(@RequestBody AddProductRequest addProductRequest) {
+        if(!(addProductRequest.getTitle().isPresent() || addProductRequest.getDescription().isPresent()
+                || addProductRequest.getCount().isPresent() || addProductRequest.getTags().isPresent()
+                || addProductRequest.getProductCategory().isPresent() || addProductRequest.getCost().isPresent()
+                || addProductRequest.getUser().isPresent())){
             return ResponseEntity.badRequest().body(new MessageResponse("Please Enter Valid Information"));
         }
 
-        if (bookRepository.existsByTitle(addBookRequest.getTitle().get())){
+        /*if (productRepository.existsByTitle(addProductRequest.getTitle().get())){
             return ResponseEntity.badRequest().body(new MessageResponse("book with this title already exists"));
+        }*/
+
+        Set<Tag> tagSet = new HashSet<>();
+        for (Tag g : addProductRequest.getTags().get()){
+            Optional<Tag> genre = tagsRepository.findById(g.getId());
+            genre.ifPresent(tagSet::add);
         }
 
-        Set<Genre> genreSet = new HashSet<>();
-        for (Genre g : addBookRequest.getGenres().get()){
-            Optional<Genre> genre = genreRepository.findById(g.getId());
-            genre.ifPresent(genreSet::add);
+        Optional<ProductCategory> pc = categoryRepository.findById(addProductRequest.getProductCategory().get().getId());
+        ProductCategory productCategory = null;
+        if(pc.isPresent()){
+            productCategory = pc.get();
         }
 
-        Set<Author> authorSet = new HashSet<>();
-        for (Author a : addBookRequest.getAuthors().get()){
-            Optional<Author> author = authorRepository.findById(a.getId());
-            author.ifPresent(authorSet::add);
+        if(tagSet.isEmpty() || productCategory == null){
+            return ResponseEntity.badRequest().body(new MessageResponse("Please Enter Valid Tags and Category"));
         }
 
-        Optional<BookCategory> bc = categoryRepository.findById(addBookRequest.getBookCategory().get().getId());
-        BookCategory bookCategory = null;
-        if(bc.isPresent()){
-            bookCategory = bc.get();
-        }
+        Product product = new Product(addProductRequest.getTitle().get(),addProductRequest.getDescription().get(),
+                addProductRequest.getImageURL().get(),addProductRequest.getCount().get(),addProductRequest.getTags().get(),
+                addProductRequest.getProductCategory().get(),addProductRequest.getCost().get(),addProductRequest.getUser().get()
+                );
 
-        if(authorSet.isEmpty() || genreSet.isEmpty() || bookCategory == null){
-            return ResponseEntity.badRequest().body(new MessageResponse("Please Enter Valid Genres, Authors and bookCategory"));
-        }
-
-        Book book = new Book(addBookRequest.getTitle().get(), addBookRequest.getDescription().get(),
-                addBookRequest.getImageURL().get(), addBookRequest.getPublication().get(),
-                addBookRequest.getCount().get(),addBookRequest.getBinding().get(),
-                genreSet, authorSet, bookCategory, addBookRequest.getCost().get());
-
-        bookRepository.save(book);
-        return ResponseEntity.ok().body(book);
+        productRepository.save(product);
+        return ResponseEntity.ok().body(product);
     }
 
-    @PutMapping("/updateBook/{id}")
+    @PutMapping("/updateProduct/{id}")
     @PreAuthorize("hasRole('MODERATOR') or hasRole('ADMIN')")
-    public ResponseEntity<?> editBook(@PathVariable Long id, @RequestBody AddBookRequest addBookRequest) {
+    public ResponseEntity<?> editProduct(@PathVariable Long id, @RequestBody AddProductRequest addProductRequest) {
 
-        Optional<Book> book = bookRepository.findById(id);
+        Optional<Product> product = productRepository.findById(id);
 
-        if(!book.isPresent()){
-            return ResponseEntity.badRequest().body("there is no book with this id");
+        if(!product.isPresent()){
+            return ResponseEntity.badRequest().body(new MessageResponse("There is no product with this id"));
         }
 
-        if(addBookRequest.getTitle().isPresent()){
-            book.get().setTitle(addBookRequest.getTitle().get());
+        if(addProductRequest.getTitle().isPresent()){
+            product.get().setTitle(addProductRequest.getTitle().get());
         }
-        if(addBookRequest.getDescription().isPresent()){
-            book.get().setDescription(addBookRequest.getDescription().get());
+        if(addProductRequest.getDescription().isPresent()){
+            product.get().setDescription(addProductRequest.getDescription().get());
         }
-        if(addBookRequest.getImageURL().isPresent()){
-            book.get().setImageURL(addBookRequest.getImageURL().get());
+        if(addProductRequest.getImageURL().isPresent()){
+            product.get().setImageURL(addProductRequest.getImageURL().get());
         }
-        if(addBookRequest.getPublication().isPresent()){
-            book.get().setPublication(addBookRequest.getPublication().get());
+        if(addProductRequest.getCount().isPresent()){
+            product.get().setCount(addProductRequest.getCount().get());
         }
-        if(addBookRequest.getCount().isPresent()){
-            book.get().setCount(addBookRequest.getCount().get());
-        }
-        if(addBookRequest.getBinding().isPresent()){
-            book.get().setBinding(addBookRequest.getBinding().get());
-        }
-        if(addBookRequest.getCost().isPresent()){
-            book.get().setCost(addBookRequest.getCost().get());
+
+        if(addProductRequest.getCost().isPresent()){
+            product.get().setCost(addProductRequest.getCost().get());
         }
 
 
-        if(addBookRequest.getGenres().isPresent()){
-            Set<Genre> genreSet = new HashSet<>();
-            for (Genre g : addBookRequest.getGenres().get()){
-                Optional<Genre> genre = genreRepository.findById(g.getId());
-                genre.ifPresent(genreSet::add);
+
+        if(addProductRequest.getTags().isPresent()){
+            Set<Tag> tagSet = new HashSet<>();
+            for (Tag g : addProductRequest.getTags().get()){
+                Optional<Tag> tags = tagsRepository.findById(g.getId());
+                tags.ifPresent(tagSet::add);
             }
-            book.get().setGenres(genreSet);
+            product.get().setTags(tagSet);
         }
 
-        if(addBookRequest.getAuthors().isPresent()){
-            Set<Author> authorSet = new HashSet<>();
-            for (Author a : addBookRequest.getAuthors().get()){
-                Optional<Author> author = authorRepository.findById(a.getId());
-                author.ifPresent(authorSet::add);
+        if (addProductRequest.getProductCategory().isPresent()){
+            Optional<ProductCategory> pc = categoryRepository.findById(addProductRequest.getProductCategory().get().getId());
+            ProductCategory productCategory = null;
+            if(pc.isPresent()){
+                productCategory = pc.get();
             }
-            book.get().setAuthors(authorSet);
+            product.get().setProductCategory(productCategory);
         }
 
-
-        if (addBookRequest.getBookCategory().isPresent()){
-            Optional<BookCategory> bc = categoryRepository.findById(addBookRequest.getBookCategory().get().getId());
-            BookCategory bookCategory = null;
-            if(bc.isPresent()){
-                bookCategory = bc.get();
+        if (addProductRequest.getUser().isPresent()){
+            Optional<User> user = userRepository.findById(addProductRequest.getUser().get().getId());
+            User userObj = null;
+            if(user.isPresent()){
+                userObj = user.get();
             }
-            book.get().setBookCategory(bookCategory);
+            product.get().setUser(userObj);
         }
 
-        bookRepository.save(book.get());
-        return ResponseEntity.ok().body(book.get());
+        productRepository.save(product.get());
+        return ResponseEntity.ok().body(product.get());
     }
 
-    @GetMapping("getBooks")
+    @GetMapping("getProducts")
     @PermitAll
-    public ResponseEntity<?> getBooks(){
-        return ResponseEntity.ok(bookRepository.findAll());
+    public ResponseEntity<?> getProducts(){
+        return ResponseEntity.ok(productRepository.findAll());
     }
 
-    @GetMapping("getBook/{id}")
+    @GetMapping("getProduct/{id}")
     @PermitAll
-    public ResponseEntity<?> getBook(@PathVariable Long id){
-        return ResponseEntity.ok(bookRepository.findById(id));
+    public ResponseEntity<?> getProduct(@PathVariable Long id){
+        return ResponseEntity.ok(productRepository.findById(id));
     }
 
-    @DeleteMapping("deleteBook/{id}")
+    @DeleteMapping("deleteProduct/{id}")
     @PreAuthorize("hasRole('MODERATOR') or hasRole('ADMIN')")
-    public ResponseEntity<?> deleteBook(@PathVariable Long id){
-        Optional<Book> book = bookRepository.findById(id);
-        book.ifPresent(value -> bookRepository.delete(value));
-        return ResponseEntity.ok().body("Successfully deleted:" + book);
+    public ResponseEntity<?> deleteProduct(@PathVariable Long id){
+        Optional<Product> product = productRepository.findById(id);
+        product.ifPresent(value -> productRepository.delete(value));
+        return ResponseEntity.ok().body(new MessageResponse("Successfully deleted:" + product));
     }
 
-    @DeleteMapping("deleteBooks")
+    @DeleteMapping("deleteProduct")
     @DenyAll
-    public ResponseEntity<?> deleteAllBooks(){
-        bookRepository.deleteAll();
-        return ResponseEntity.ok().body("Successfully deleted all books, thanks <3");
+    public ResponseEntity<?> deleteAllProduct(){
+        productRepository.deleteAll();
+        return ResponseEntity.ok().body(new MessageResponse("Successfully deleted all products, thanks <3"));
     }
 
-    @PostMapping("/addAuthor")
+    @PostMapping("/addTags")
     @PreAuthorize("hasRole('MODERATOR') or hasRole('ADMIN')")
-    public ResponseEntity<?> addAuthor(@RequestBody AddAuthorRequest addAuthorRequest ) {
-        if(!(addAuthorRequest.getFirstName().isPresent() || addAuthorRequest.getLastName().isPresent())){
-            return ResponseEntity.badRequest().body(new MessageResponse("pls enter fname and lname"));
-        }
-        if (authorRepository.existsByFirstNameAndLastName(addAuthorRequest.getFirstName().get(), addAuthorRequest.getLastName().get())){
-            return ResponseEntity.badRequest().body(new MessageResponse("this author already exists"));
-        }
-        Author author = new Author(addAuthorRequest.getFirstName().get(),addAuthorRequest.getLastName().get());
-        authorRepository.save(author);
-        return ResponseEntity.ok().body(author);
-    }
-
-    @PutMapping("/updateAuthor/{id}")
-    @PreAuthorize("hasRole('MODERATOR') or hasRole('ADMIN')")
-    public ResponseEntity<?> updateAuthor(@PathVariable Long id,@RequestBody AddAuthorRequest addAuthorRequest ) {
-        Optional<Author> author = authorRepository.findById(id);
-        if(author.isPresent()){
-            if (addAuthorRequest.getFirstName().isPresent()){
-                author.get().setFirstName(addAuthorRequest.getFirstName().get());
-            }
-            if (addAuthorRequest.getLastName().isPresent()){
-                author.get().setLastName(addAuthorRequest.getLastName().get());
-            }
-            authorRepository.save(author.get());
-            return ResponseEntity.ok().body(author);
-        }
-        else{
-            return ResponseEntity.badRequest().body("no such author present");
-        }
-    }
-
-    @GetMapping("getAuthors")
-    @PermitAll
-    public ResponseEntity<?> getAuthors(){
-        return ResponseEntity.ok(authorRepository.findAll());
-    }
-
-    @GetMapping("getAuthor/{id}")
-    @PermitAll
-    public ResponseEntity<?> getAuthor(@PathVariable Long id){
-        return ResponseEntity.ok(authorRepository.findById(id));
-    }
-
-    @DeleteMapping("deleteAuthor/{id}")
-    @PreAuthorize("hasRole('MODERATOR') or hasRole('ADMIN')")
-    public ResponseEntity<?> deleteAuthor(@PathVariable Long id){
-        Optional<Author> author = authorRepository.findById(id);
-        author.ifPresent(value -> authorRepository.delete(value));
-        return ResponseEntity.ok().body("Successfully deleted:" + author);
-    }
-
-    @DeleteMapping("deleteAuthors")
-    @DenyAll
-    public ResponseEntity<?> deleteAllAuthors(){
-        authorRepository.deleteAll();
-        return ResponseEntity.ok().body("Successfully deleted all authors, thanks <3");
-    }
-
-
-
-
-
-
-    @PostMapping("/addGenre")
-    @PreAuthorize("hasRole('MODERATOR') or hasRole('ADMIN')")
-    public ResponseEntity<?> addGenre(@RequestBody AddGenreRequest addGenreRequest ) {
-        if(!(addGenreRequest.getTitle().isPresent() || addGenreRequest.getDescription().isPresent())){
+    public ResponseEntity<?> addTags(@RequestBody AddTagRequest addTagRequest) {
+        if(!(addTagRequest.getTitle().isPresent() || addTagRequest.getDescription().isPresent())){
             return ResponseEntity.badRequest().body(new MessageResponse("Please Enter Valid Information"));
         }
-        if (genreRepository.existsByTitle(addGenreRequest.getTitle().get())){
-            return ResponseEntity.badRequest().body(new MessageResponse("This Category is already exist"));
+        if (tagsRepository.existsByTitle(addTagRequest.getTitle().get())){
+            return ResponseEntity.badRequest().body(new MessageResponse("This Tag is already exist"));
         }
-        Genre genre = new Genre(addGenreRequest.getTitle().get(),addGenreRequest.getDescription().get());
-        genreRepository.save(genre);
-        return ResponseEntity.ok().body(genre);
+        Tag tag = new Tag(addTagRequest.getTitle().get(), addTagRequest.getDescription().get());
+        tagsRepository.save(tag);
+        return ResponseEntity.ok().body(tag);
     }
 
-    @PutMapping("/updateGenre/{id}")
+    @PutMapping("/updateTags/{id}")
     @PreAuthorize("hasRole('MODERATOR') or hasRole('ADMIN')")
-    public ResponseEntity<?> updateGenre(@PathVariable Long id,@RequestBody AddGenreRequest addGenreRequest ) {
-        Optional<Genre> genre = genreRepository.findById(id);
-        if(genre.isPresent()){
-            if (addGenreRequest.getTitle().isPresent()){
-                genre.get().setTitle(addGenreRequest.getTitle().get());
+    public ResponseEntity<?> updateTags(@PathVariable Long id,@RequestBody AddTagRequest addTagRequest) {
+        Optional<Tag> tags = tagsRepository.findById(id);
+        if(tags.isPresent()){
+            if (addTagRequest.getTitle().isPresent()){
+                tags.get().setTitle(addTagRequest.getTitle().get());
             }
-            if (addGenreRequest.getDescription().isPresent()){
-                genre.get().setDescription(addGenreRequest.getDescription().get());
+            if (addTagRequest.getDescription().isPresent()){
+                tags.get().setDescription(addTagRequest.getDescription().get());
             }
-            genreRepository.save(genre.get());
-            return ResponseEntity.ok().body(genre);
+            tagsRepository.save(tags.get());
+            return ResponseEntity.ok().body(tags);
         }
         else{
-            return ResponseEntity.badRequest().body("no such genre present");
+            return ResponseEntity.badRequest().body(new MessageResponse("No such tags present"));
         }
     }
 
-    @GetMapping("getGenres")
+    @GetMapping("getTags")
     @PermitAll
-    public ResponseEntity<?> getGenres(){
-        return ResponseEntity.ok(genreRepository.findAll());
+    public ResponseEntity<?> getTags(){
+        return ResponseEntity.ok(tagsRepository.findAll());
     }
 
-    @GetMapping("getGenre/{id}")
+    @GetMapping("getTags/{id}")
     @PermitAll
-    public ResponseEntity<?> getGenre(@PathVariable Long id){
-        return ResponseEntity.ok(genreRepository.findById(id));
+    public ResponseEntity<?> getTags(@PathVariable Long id){
+        return ResponseEntity.ok(tagsRepository.findById(id));
     }
 
-    @DeleteMapping("deleteGenre/{id}")
+    @DeleteMapping("deleteTags/{id}")
     @PreAuthorize("hasRole('MODERATOR') or hasRole('ADMIN')")
-    public ResponseEntity<?> deleteGenre(@PathVariable Long id){
-        Optional<Genre> genre = genreRepository.findById(id);
-        genre.ifPresent(value -> genreRepository.delete(value));
-        return ResponseEntity.ok().body("Successfully deleted:" + genre);
+    public ResponseEntity<?> deleteTags(@PathVariable Long id){
+        Optional<Tag> tags = tagsRepository.findById(id);
+        tags.ifPresent(value -> tagsRepository.delete(value));
+        return ResponseEntity.ok().body(new MessageResponse("Successfully deleted:" + tags));
     }
 
-    @DeleteMapping("deleteGenres")
+    @DeleteMapping("deleteTags")
     @DenyAll
-    public ResponseEntity<?> deleteAllGenres(){
-        genreRepository.deleteAll();
-        return ResponseEntity.ok().body("Successfully deleted all genres, thanks <3");
+    public ResponseEntity<?> deleteAllTags(){
+        tagsRepository.deleteAll();
+        return ResponseEntity.ok().body(new MessageResponse("Successfully deleted all genres, thanks <3"));
     }
 
 
@@ -325,22 +244,22 @@ public class TestController {
 
     @PostMapping("/addCategory")
     @PreAuthorize("hasRole('MODERATOR') or hasRole('ADMIN')")
-    public ResponseEntity<?> addAuthor(@RequestBody AddCategoryRequest addCategoryRequest ) {
+    public ResponseEntity<?> addCategory(@RequestBody AddCategoryRequest addCategoryRequest ) {
         if(!(addCategoryRequest.getTitle().isPresent() || addCategoryRequest.getDescription().isPresent())){
             return ResponseEntity.badRequest().body(new MessageResponse("Please Enter Valid Information"));
         }
         if (categoryRepository.existsByTitle(addCategoryRequest.getTitle().get())){
             return ResponseEntity.badRequest().body(new MessageResponse("This Category already exists"));
         }
-        BookCategory bookCategory = new BookCategory(addCategoryRequest.getTitle().get(),addCategoryRequest.getDescription().get());
-        categoryRepository.save(bookCategory);
-        return ResponseEntity.ok().body(bookCategory);
+        ProductCategory productCategory = new ProductCategory(addCategoryRequest.getTitle().get(),addCategoryRequest.getDescription().get());
+        categoryRepository.save(productCategory);
+        return ResponseEntity.ok().body(productCategory);
     }
 
     @PutMapping("/updateCategory/{id}")
     @PreAuthorize("hasRole('MODERATOR') or hasRole('ADMIN')")
     public ResponseEntity<?> updateCategory(@PathVariable Long id,@RequestBody AddCategoryRequest addCategoryRequest) {
-        Optional<BookCategory> bookCategory = categoryRepository.findById(id);
+        Optional<ProductCategory> bookCategory = categoryRepository.findById(id);
         if(bookCategory.isPresent()){
             if (addCategoryRequest.getTitle().isPresent()){
                 bookCategory.get().setTitle(addCategoryRequest.getTitle().get());
@@ -352,7 +271,7 @@ public class TestController {
             return ResponseEntity.ok().body(bookCategory);
         }
         else{
-            return ResponseEntity.badRequest().body("no such category present");
+            return ResponseEntity.badRequest().body(new MessageResponse("no such category present"));
         }
     }
 
@@ -371,9 +290,9 @@ public class TestController {
     @DeleteMapping("deleteCategory/{id}")
     @PreAuthorize("hasRole('MODERATOR') or hasRole('ADMIN')")
     public ResponseEntity<?> deleteCategory(@PathVariable Long id){
-        Optional<BookCategory> bookCategory= categoryRepository.findById(id);
-        bookCategory.ifPresent(value -> categoryRepository.delete(value));
-        return ResponseEntity.ok().body("Successfully deleted:" + bookCategory);
+        Optional<ProductCategory> productCategory= categoryRepository.findById(id);
+        productCategory.ifPresent(value -> categoryRepository.delete(value));
+        return ResponseEntity.ok().body(new MessageResponse("Successfully deleted:" + productCategory));
     }
 
     @DeleteMapping("deleteCategories")
@@ -384,7 +303,7 @@ public class TestController {
     }
 
     @DeleteMapping("deleteUser/{id}")
-    @PreAuthorize("hasRole('MODERATOR') or hasRole('ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> deleteUser(@PathVariable Long id){
         Optional<User> user = userRepository.findById(id);
         if (user.isPresent()) {
@@ -399,8 +318,8 @@ public class TestController {
             Set<Role> roleSet = new HashSet<>();
             user.get().setRoles(roleSet);
             userRepository.delete(user.get());
-            return ResponseEntity.ok("User " + user + " was successfully deleted");
+            return ResponseEntity.ok(new MessageResponse("User " + user + " was successfully deleted"));
         }
-        return ResponseEntity.badRequest().body("Such user does not exist");
+        return ResponseEntity.badRequest().body(new MessageResponse("Such user does not exist"));
     }
 }

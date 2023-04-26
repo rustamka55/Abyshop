@@ -18,15 +18,15 @@ public class CartItem {
     @GeneratedValue
     private Long id;
 
-    @OneToOne(targetEntity = Book.class, fetch = FetchType.EAGER)
-    @JoinColumn(nullable = false, name = "book_id")
-    private Book book;
+    @OneToOne(targetEntity = Product.class, fetch = FetchType.EAGER)
+    @JoinColumn(nullable = false, name = "product_id")
+    private Product product;
 
     @Column
     private Long quantity;
 
-    public CartItem(Book book, Long quantity) {
-        this.book = book;
+    public CartItem(Product product, Long quantity) {
+        this.product = product;
         this.quantity = quantity;
     }
 }

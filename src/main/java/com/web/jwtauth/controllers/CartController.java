@@ -1,31 +1,23 @@
 package com.web.jwtauth.controllers;
 
 import com.web.jwtauth.jms.Message;
-import com.web.jwtauth.models.Book;
+import com.web.jwtauth.models.Product;
 import com.web.jwtauth.models.Cart;
 import com.web.jwtauth.models.CartItem;
 import com.web.jwtauth.models.User;
 import com.web.jwtauth.payload.request.AddCartItemRequest;
+import com.web.jwtauth.payload.response.MessageResponse;
 import com.web.jwtauth.repository.*;
 import com.web.jwtauth.security.jwt.JwtUtils;
-import org.apache.tomcat.util.net.openssl.ciphers.Authentication;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Bean;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jms.annotation.EnableJms;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.parameters.P;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 import javax.jms.JMSException;
 import javax.servlet.http.HttpServletRequest;
-import javax.swing.text.html.Option;
 import java.util.HashSet;
 import java.util.Objects;
 import java.util.Optional;
@@ -38,16 +30,13 @@ import java.util.Set;
 public class CartController {
 
     @Autowired
-    BookRepository bookRepository;
-
-    @Autowired
-    AuthorRepository authorRepository;
+    ProductRepository productRepository;
 
     @Autowired
     CategoryRepository categoryRepository;
 
     @Autowired
-    GenreRepository genreRepository;
+    TagsRepository tagsRepository;
 
     @Autowired
     CartRepository cartRepository;
@@ -63,7 +52,7 @@ public class CartController {
 
 
     @PostMapping("/addCartItem")
-    @PreAuthorize("hasRole('USER')")
+    @PreAuthorize("hasRole('MODERATOR') or hasRole('USER')")
     public ResponseEntity<?> addCartItem(@RequestBody AddCartItemRequest addCartItemRequest, HttpServletRequest httpServletRequest){
         Long id = addCartItemRequest.getId();
         Long quantity = addCartItemRequest.getQuantity();
@@ -78,11 +67,11 @@ public class CartController {
         if (jwt != null && jwtUtils.validateJwtToken(jwt)) {
             username = jwtUtils.getUserNameFromJwtToken(jwt);
         }
-        Optional<User> user = userRepository.findByUsername(username);
-        Optional<Book> book = bookRepository.findById(id);
-        if(book.isPresent()) {
+        Optional<User> user = userRepository.findByEmail(username);
+        Optional<Product> product = productRepository.findById(id);
+        if(product.isPresent()) {
             if (user.isPresent()) {
-                if (!(quantity < 1) && !(quantity > book.get().getCount())) {
+                if (!(quantity < 1) && !(quantity > product.get().getCount())) {
                     Optional<Cart> cart = cartRepository.findByUser(user.get());
                     if (!cart.isPresent()) {
                         Cart newCart = new Cart(user.get(), new HashSet<>());
@@ -91,24 +80,24 @@ public class CartController {
                     cart = cartRepository.findByUser(user.get());
                     Set<CartItem> cartItems = cart.get().getCartItems();
                     for (CartItem i : cartItems) {
-                        if (Objects.equals(i.getBook().getId(), book.get().getId())) {
+                        if (Objects.equals(i.getProduct().getId(), product.get().getId())) {
                             i.setQuantity(i.getQuantity() + quantity);
                             cartItemRepository.save(i);
                             cartRepository.save(cart.get());
-                            return ResponseEntity.ok("book " + i.getBook().getTitle() + " is added to your cart");
+                            return ResponseEntity.ok(new MessageResponse("Product " + i.getProduct().getTitle() + " is added to your cart"));
                         }
                     }
-                    CartItem newCartItem = new CartItem(book.get(), quantity);
+                    CartItem newCartItem = new CartItem(product.get(), quantity);
                     cartItems.add(newCartItem);
                     cartItemRepository.save(newCartItem);
                     cartRepository.save(cart.get());
-                    return ResponseEntity.ok("book " + newCartItem.getBook().getTitle() + " is added to your cart");
+                    return ResponseEntity.ok(new MessageResponse("Product " + newCartItem.getProduct().getTitle() + " is added to your cart"));
                 }
-                return ResponseEntity.badRequest().body("enter valid quantity");
+                return ResponseEntity.badRequest().body(new MessageResponse("Enter valid quantity"));
             }
-            return ResponseEntity.badRequest().body("not authorized");
+            return ResponseEntity.badRequest().body(new MessageResponse("Not authorized"));
         }
-        return ResponseEntity.badRequest().body("no such book");
+        return ResponseEntity.badRequest().body(new MessageResponse("No such product"));
     }
 
     @GetMapping("/getCartItems")
@@ -123,15 +112,15 @@ public class CartController {
         if (jwt != null && jwtUtils.validateJwtToken(jwt)) {
             username = jwtUtils.getUserNameFromJwtToken(jwt);
         }
-        Optional<User> user = userRepository.findByUsername(username);
+        Optional<User> user = userRepository.findByEmail(username);
         if(user.isPresent()){
             Optional<Cart> cart = cartRepository.findByUser(user.get());
             if (cart.isPresent()) {
                 return ResponseEntity.ok().body(cart.get().getCartItems());
             }
-            return ResponseEntity.ok().body("empty cart");
+            return ResponseEntity.ok().body(new MessageResponse("Empty cart"));
         }
-        return ResponseEntity.badRequest().body("not authorized");
+        return ResponseEntity.badRequest().body(new MessageResponse("Not authorized"));
     }
 
 
@@ -150,40 +139,40 @@ public class CartController {
         if (jwt != null && jwtUtils.validateJwtToken(jwt)) {
             username = jwtUtils.getUserNameFromJwtToken(jwt);
         }
-        Optional<User> user = userRepository.findByUsername(username);
-        Optional<Book> book = bookRepository.findById(id);
-        if(book.isPresent()) {
+        Optional<User> user = userRepository.findByEmail(username);
+        Optional<Product> product = productRepository.findById(id);
+        if(product.isPresent()) {
             if (user.isPresent()) {
-                if (quantity>=0 && quantity<=book.get().getCount()) {
+                if (quantity>=0 && quantity<=product.get().getCount()) {
                     Optional<Cart> cart = cartRepository.findByUser(user.get());
                     if (!cart.isPresent()) {
-                        return ResponseEntity.badRequest().body("no cart");
+                        return ResponseEntity.badRequest().body(new MessageResponse("No cart"));
                     }
                     Set<CartItem> cartItems = cart.get().getCartItems();
                     for (CartItem i : cartItems) {
-                        if (Objects.equals(i.getBook().getId(), book.get().getId())) {
+                        if (Objects.equals(i.getProduct().getId(), product.get().getId())) {
                             if(quantity==0){
                                 Set<CartItem> cartItemSet = cart.get().getCartItems();
                                 cartItemSet.remove(i);
                                 cart.get().setCartItems(cartItemSet);
                                 cartItemRepository.delete(i);
                                 cartRepository.save(cart.get());
-                                return ResponseEntity.ok("book " + i.getBook().getTitle() + " was deleted");
+                                return ResponseEntity.ok(new MessageResponse("Product " + i.getProduct().getTitle() + " was deleted"));
                             }
                             else {
                                 i.setQuantity(quantity);
                                 cartItemRepository.save(i);
-                                return ResponseEntity.ok("book " + i.getBook().getTitle() + " quantity updated to " + quantity);
+                                return ResponseEntity.ok(new MessageResponse("Product " + i.getProduct().getTitle() + " quantity updated to " + quantity));
                             }
                         }
                     }
-                    return ResponseEntity.badRequest().body("no such item in the cart");
+                    return ResponseEntity.badRequest().body(new MessageResponse("No such item in the cart"));
                 }
-                return ResponseEntity.badRequest().body("enter valid quantity");
+                return ResponseEntity.badRequest().body(new MessageResponse("Enter valid quantity"));
             }
-            return ResponseEntity.badRequest().body("not authorized");
+            return ResponseEntity.badRequest().body(new MessageResponse("Not authorized"));
         }
-        return ResponseEntity.badRequest().body("no such book");
+        return ResponseEntity.badRequest().body(new MessageResponse("No such product"));
     }
 
 
@@ -209,16 +198,16 @@ public class CartController {
         if (jwt != null && jwtUtils.validateJwtToken(jwt)) {
             username = jwtUtils.getUserNameFromJwtToken(jwt);
         }
-        Optional<User> user = userRepository.findByUsername(username);
+        Optional<User> user = userRepository.findByEmail(username);
         if(user.isPresent()){
             Optional<Cart> cart = cartRepository.findByUser(user.get());
             if (cart.isPresent()) {
                 message.sendMessage(cart.get());
-                return  ResponseEntity.ok().body("Message " + cart + " was sent to admin");
+                return  ResponseEntity.ok().body(new MessageResponse("Message " + cart + " was sent to admin"));
             }
-            return ResponseEntity.ok().body("empty cart");
+            return ResponseEntity.ok().body(new MessageResponse("Empty cart"));
         }
-        return ResponseEntity.badRequest().body("not authorized");
+        return ResponseEntity.badRequest().body(new MessageResponse("Not authorized"));
     }
 
 
