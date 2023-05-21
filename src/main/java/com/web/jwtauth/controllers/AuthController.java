@@ -11,6 +11,7 @@ import com.web.jwtauth.models.*;
 import com.web.jwtauth.payload.request.*;
 import com.web.jwtauth.payload.response.StatusReponse;
 import com.web.jwtauth.payload.response.TokenRefreshResponse;
+import com.web.jwtauth.repository.SessionRepository;
 import com.web.jwtauth.security.services.RefreshTokenService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -42,6 +43,9 @@ public class AuthController {
 
     @Autowired
     RoleRepository roleRepository;
+
+    @Autowired
+    SessionRepository sessionRepository;
 
     @Autowired
     PasswordEncoder encoder;
@@ -116,6 +120,52 @@ public class AuthController {
             else {
                 return ResponseEntity.badRequest().body(new StatusReponse(false));
             }
+        }
+        return ResponseEntity.badRequest().body(new MessageResponse("Not authorized"));
+    }
+
+    @PostMapping("/addSession")
+    @PreAuthorize("hasRole('USER')")
+    public ResponseEntity<?> addSession(@RequestBody AddSessionRequest addSessionRequest, HttpServletRequest httpServletRequest){
+        String time = addSessionRequest.getTime();
+        String duration = addSessionRequest.getDuration();
+        String date = addSessionRequest.getDate();
+        String room = addSessionRequest.getRoom();
+
+        String headerAuth = httpServletRequest.getHeader("Authorization");
+        String jwt = null;
+        String username = null;
+        if (StringUtils.hasText(headerAuth) && headerAuth.startsWith("Bearer ")) {
+            jwt =  headerAuth.substring(7, headerAuth.length());
+        }
+        if (jwt != null && jwtUtils.validateJwtToken(jwt)) {
+            username = jwtUtils.getUserNameFromJwtToken(jwt);
+        }
+        Optional<User> user = userRepository.findByEmail(username);
+        if (user.isPresent()) {
+            Session session = new Session(time,duration,date,room,user.get());
+            sessionRepository.save(session);
+            return ResponseEntity.ok().body(new StatusReponse(true));
+        }
+        return ResponseEntity.badRequest().body(new MessageResponse("Not authorized"));
+    }
+
+    @GetMapping("/getSessions")
+    @PreAuthorize("hasRole('USER')")
+    public ResponseEntity<?> getSessions(HttpServletRequest httpServletRequest){
+        String headerAuth = httpServletRequest.getHeader("Authorization");
+        String jwt = null;
+        String username = null;
+        if (StringUtils.hasText(headerAuth) && headerAuth.startsWith("Bearer ")) {
+            jwt =  headerAuth.substring(7, headerAuth.length());
+        }
+        if (jwt != null && jwtUtils.validateJwtToken(jwt)) {
+            username = jwtUtils.getUserNameFromJwtToken(jwt);
+        }
+        Optional<User> user = userRepository.findByEmail(username);
+        if (user.isPresent()) {
+            List<Session> sessions = sessionRepository.findSessionsByUser(user.get());
+            return ResponseEntity.ok().body(sessions);
         }
         return ResponseEntity.badRequest().body(new MessageResponse("Not authorized"));
     }
