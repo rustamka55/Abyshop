@@ -4,6 +4,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 import javax.servlet.http.HttpServletRequest;
+import javax.transaction.Transactional;
 import javax.validation.Valid;
 
 import com.web.jwtauth.exception.TokenRefreshException;
@@ -11,7 +12,7 @@ import com.web.jwtauth.models.*;
 import com.web.jwtauth.payload.request.*;
 import com.web.jwtauth.payload.response.StatusReponse;
 import com.web.jwtauth.payload.response.TokenRefreshResponse;
-import com.web.jwtauth.repository.SessionRepository;
+import com.web.jwtauth.repository.*;
 import com.web.jwtauth.security.services.RefreshTokenService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -26,8 +27,6 @@ import org.springframework.web.bind.annotation.*;
 
 import com.web.jwtauth.payload.response.JwtResponse;
 import com.web.jwtauth.payload.response.MessageResponse;
-import com.web.jwtauth.repository.RoleRepository;
-import com.web.jwtauth.repository.UserRepository;
 import com.web.jwtauth.security.jwt.JwtUtils;
 import com.web.jwtauth.security.services.UserDetailsImpl;
 
@@ -42,10 +41,19 @@ public class AuthController {
     UserRepository userRepository;
 
     @Autowired
+    CartRepository cartRepository;
+
+    @Autowired
+    CartItemRepository cartItemRepository;
+
+    @Autowired
     RoleRepository roleRepository;
 
     @Autowired
     SessionRepository sessionRepository;
+
+    @Autowired
+    RefreshTokenRepository refreshTokenRepository;
 
     @Autowired
     PasswordEncoder encoder;
@@ -112,8 +120,9 @@ public class AuthController {
         }
         Optional<User> user = userRepository.findByEmail(username);
         if (user.isPresent()) {
-            if(user.get().getPassword().equals(encoder.encode(oldPassword))) {
-                user.get().setPassword(encoder.encode(changePasswordRequest.getPassword()));
+            System.out.println(encoder.matches(oldPassword,user.get().getPassword()));
+            if(encoder.matches(oldPassword,user.get().getPassword())) {
+                user.get().setPassword(encoder.encode(newPassword));
                 userRepository.save(user.get());
                 return ResponseEntity.ok().body(new StatusReponse(true));
             }
@@ -145,6 +154,40 @@ public class AuthController {
         if (user.isPresent()) {
             Session session = new Session(time,duration,date,room,user.get());
             sessionRepository.save(session);
+            return ResponseEntity.ok().body(new StatusReponse(true));
+        }
+        return ResponseEntity.badRequest().body(new MessageResponse("Not authorized"));
+    }
+
+    @Transactional
+    @PostMapping("/deleteUser")
+    @PreAuthorize("hasRole('USER')")
+    public ResponseEntity<?> deleteUser(HttpServletRequest httpServletRequest){
+
+        String headerAuth = httpServletRequest.getHeader("Authorization");
+        String jwt = null;
+        String username = null;
+        if (StringUtils.hasText(headerAuth) && headerAuth.startsWith("Bearer ")) {
+            jwt =  headerAuth.substring(7, headerAuth.length());
+        }
+        if (jwt != null && jwtUtils.validateJwtToken(jwt)) {
+            username = jwtUtils.getUserNameFromJwtToken(jwt);
+        }
+        Optional<User> user = userRepository.findByEmail(username);
+        if (user.isPresent()) {
+            Optional<Cart> cart = cartRepository.findByUser(user.get());
+            if (cart.isPresent()) {
+                Set<CartItem> cartItems = cart.get().getCartItems();
+                Set<CartItem> cartItemSet = new HashSet<>();
+                cartItemRepository.deleteAll(cartItems);
+                cart.get().setCartItems(cartItemSet);
+                cartRepository.delete(cart.get());
+            }
+            Set<Role> roleSet = new HashSet<>();
+            user.get().setRoles(roleSet);
+            refreshTokenRepository.deleteAllByUser(user.get());
+            sessionRepository.deleteAllByUser(user.get());
+            userRepository.delete(user.get());
             return ResponseEntity.ok().body(new StatusReponse(true));
         }
         return ResponseEntity.badRequest().body(new MessageResponse("Not authorized"));

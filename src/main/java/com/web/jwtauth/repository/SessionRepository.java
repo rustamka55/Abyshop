@@ -12,5 +12,6 @@ import java.util.List;
 public interface SessionRepository extends JpaRepository<Session,Long> {
     public List<Session> findAll();
 
+    public void deleteAllByUser(User user);
     public List<Session> findSessionsByUser(User user);
 }
