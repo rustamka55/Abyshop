@@ -9,6 +9,7 @@ import javax.validation.Valid;
 import com.web.jwtauth.exception.TokenRefreshException;
 import com.web.jwtauth.models.*;
 import com.web.jwtauth.payload.request.*;
+import com.web.jwtauth.payload.response.StatusReponse;
 import com.web.jwtauth.payload.response.TokenRefreshResponse;
 import com.web.jwtauth.security.services.RefreshTokenService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -94,6 +95,7 @@ public class AuthController {
     @PreAuthorize("hasRole('USER')")
     public ResponseEntity<?> changePassword(@RequestBody ChangePasswordRequest changePasswordRequest, HttpServletRequest httpServletRequest){
         String newPassword = changePasswordRequest.getPassword();
+        String oldPassword = changePasswordRequest.getOldPassword();
 
         String headerAuth = httpServletRequest.getHeader("Authorization");
         String jwt = null;
@@ -101,19 +103,49 @@ public class AuthController {
         if (StringUtils.hasText(headerAuth) && headerAuth.startsWith("Bearer ")) {
             jwt =  headerAuth.substring(7, headerAuth.length());
         }
-        System.out.println("asd1");
         if (jwt != null && jwtUtils.validateJwtToken(jwt)) {
             username = jwtUtils.getUserNameFromJwtToken(jwt);
         }
-        System.out.println("asd2");
         Optional<User> user = userRepository.findByEmail(username);
-        System.out.println("asd3");
         if (user.isPresent()) {
-            user.get().setPassword(encoder.encode(changePasswordRequest.getPassword()));
-            userRepository.save(user.get());
-            return ResponseEntity.ok().body(new MessageResponse("Password Changed"));
+            if(user.get().getPassword().equals(encoder.encode(oldPassword))) {
+                user.get().setPassword(encoder.encode(changePasswordRequest.getPassword()));
+                userRepository.save(user.get());
+                return ResponseEntity.ok().body(new StatusReponse(true));
+            }
+            else {
+                return ResponseEntity.badRequest().body(new StatusReponse(false));
+            }
         }
-        System.out.println("asd4");
+        return ResponseEntity.badRequest().body(new MessageResponse("Not authorized"));
+    }
+
+    @PutMapping("/changeEmail")
+    @PreAuthorize("hasRole('USER')")
+    public ResponseEntity<?> changePassword(@RequestBody ChangeEmailRequest changeEmailRequest, HttpServletRequest httpServletRequest){
+        String password = changeEmailRequest.getPassword();
+        String newEmail = changeEmailRequest.getEmail();
+
+        String headerAuth = httpServletRequest.getHeader("Authorization");
+        String jwt = null;
+        String username = null;
+        if (StringUtils.hasText(headerAuth) && headerAuth.startsWith("Bearer ")) {
+            jwt =  headerAuth.substring(7, headerAuth.length());
+        }
+        if (jwt != null && jwtUtils.validateJwtToken(jwt)) {
+            username = jwtUtils.getUserNameFromJwtToken(jwt);
+        }
+        Optional<User> user = userRepository.findByEmail(username);
+        if (user.isPresent()) {
+            if(user.get().getPassword().equals(encoder.encode(password))) {
+                user.get().setEmail(newEmail);
+                userRepository.save(user.get());
+                return ResponseEntity.ok().body(new StatusReponse(true));
+            }
+            else {
+                return ResponseEntity.badRequest().body(new StatusReponse(false));
+            }
+        }
         return ResponseEntity.badRequest().body(new MessageResponse("Not authorized"));
     }
 
