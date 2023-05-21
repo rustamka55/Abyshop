@@ -58,10 +58,9 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
                 .exceptionHandling().authenticationEntryPoint(unauthorizedHandler).and()
                 .sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS).and()
                 .authorizeRequests()
-                .antMatchers("/api/deleteAuthors").denyAll()
-                .antMatchers("/api/deleteGenres").denyAll()
+                .antMatchers("/api/deleteProducts").denyAll()
+                .antMatchers("/api/deleteTags").denyAll()
                 .antMatchers("/api/deleteCategories").denyAll()
-                .antMatchers("/api/deleteBooks").denyAll()
                 .antMatchers("/api/auth/**").permitAll()
                 .antMatchers("/api/**").permitAll()
                 .anyRequest().authenticated();

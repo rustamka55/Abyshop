@@ -1,30 +1,27 @@
 package com.web.jwtauth.controllers;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
+import javax.servlet.http.HttpServletRequest;
 import javax.validation.Valid;
 
+import com.web.jwtauth.exception.TokenRefreshException;
+import com.web.jwtauth.models.*;
+import com.web.jwtauth.payload.request.*;
+import com.web.jwtauth.payload.response.TokenRefreshResponse;
+import com.web.jwtauth.security.services.RefreshTokenService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.web.bind.annotation.CrossOrigin;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.util.StringUtils;
+import org.springframework.web.bind.annotation.*;
 
-import com.web.jwtauth.models.ERole;
-import com.web.jwtauth.models.Role;
-import com.web.jwtauth.models.User;
-import com.web.jwtauth.payload.request.LoginRequest;
-import com.web.jwtauth.payload.request.SignupRequest;
 import com.web.jwtauth.payload.response.JwtResponse;
 import com.web.jwtauth.payload.response.MessageResponse;
 import com.web.jwtauth.repository.RoleRepository;
@@ -51,6 +48,9 @@ public class AuthController {
     @Autowired
     JwtUtils jwtUtils;
 
+    @Autowired
+    RefreshTokenService refreshTokenService;
+
     @PostMapping("/signin")
     public ResponseEntity<?> authenticateUser(@Valid @RequestBody LoginRequest loginRequest) {
 
@@ -58,18 +58,63 @@ public class AuthController {
                 new UsernamePasswordAuthenticationToken(loginRequest.getUsername(), loginRequest.getPassword()));
 
         SecurityContextHolder.getContext().setAuthentication(authentication);
-        String jwt = jwtUtils.generateJwtToken(authentication);
-
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
+        String jwt = jwtUtils.generateJwtToken(userDetails);
+
+
         List<String> roles = userDetails.getAuthorities().stream()
                 .map(item -> item.getAuthority())
                 .collect(Collectors.toList());
 
+        RefreshToken refreshToken = refreshTokenService.createRefreshToken(userDetails.getId());
         return ResponseEntity.ok(new JwtResponse(jwt,
+                refreshToken.getToken(),
                 userDetails.getId(),
                 userDetails.getUsername(),
                 userDetails.getEmail(),
                 roles));
+    }
+
+    @PostMapping("/refreshtoken")
+    public ResponseEntity<?> refreshtoken(@Valid @RequestBody TokenRefreshRequest request) {
+        String requestRefreshToken = request.getRefreshToken();
+
+        return refreshTokenService.findByToken(requestRefreshToken)
+                .map(refreshTokenService::verifyExpiration)
+                .map(RefreshToken::getUser)
+                .map(user -> {
+                    String token = jwtUtils.generateTokenFromUsername(user.getUsername());
+                    return ResponseEntity.ok(new TokenRefreshResponse(token, requestRefreshToken));
+                })
+                .orElseThrow(() -> new TokenRefreshException(requestRefreshToken,
+                        "Refresh token is not in database!"));
+    }
+
+    @PutMapping("/changePassword")
+    @PreAuthorize("hasRole('USER')")
+    public ResponseEntity<?> changePassword(@RequestBody ChangePasswordRequest changePasswordRequest, HttpServletRequest httpServletRequest){
+        String newPassword = changePasswordRequest.getPassword();
+
+        String headerAuth = httpServletRequest.getHeader("Authorization");
+        String jwt = null;
+        String username = null;
+        if (StringUtils.hasText(headerAuth) && headerAuth.startsWith("Bearer ")) {
+            jwt =  headerAuth.substring(7, headerAuth.length());
+        }
+        System.out.println("asd1");
+        if (jwt != null && jwtUtils.validateJwtToken(jwt)) {
+            username = jwtUtils.getUserNameFromJwtToken(jwt);
+        }
+        System.out.println("asd2");
+        Optional<User> user = userRepository.findByEmail(username);
+        System.out.println("asd3");
+        if (user.isPresent()) {
+            user.get().setPassword(encoder.encode(changePasswordRequest.getPassword()));
+            userRepository.save(user.get());
+            return ResponseEntity.ok().body(new MessageResponse("Password Changed"));
+        }
+        System.out.println("asd4");
+        return ResponseEntity.badRequest().body(new MessageResponse("Not authorized"));
     }
 
     @PostMapping("/signup")
