@@ -11,9 +11,9 @@ import javax.validation.constraints.*;
 @NoArgsConstructor
 
 public class SignupRequest {
-    @NotBlank
-    @Size(min = 3, max = 20,message = "username size")
-    private String username;
+    //@NotBlank
+    //@Size(min = 3, max = 20,message = "username size")
+    //private String username;
 
     @NotBlank
     @Size(max = 50,message = "em size")
