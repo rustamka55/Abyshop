@@ -20,7 +20,7 @@ import java.util.*;
 @CrossOrigin(origins = "*", maxAge = 3600)
 @RestController
 @RequestMapping("/api/")
-public class TestController {
+public class ModController {
 
     @Autowired
     ProductRepository productRepository;
@@ -184,7 +184,7 @@ public class TestController {
         return ResponseEntity.ok().body(new MessageResponse("Successfully deleted:" + product));
     }
 
-    @DeleteMapping("deleteProduct")
+    @DeleteMapping("deleteProducts")
     @DenyAll
     public ResponseEntity<?> deleteAllProduct(){
         productRepository.deleteAll();

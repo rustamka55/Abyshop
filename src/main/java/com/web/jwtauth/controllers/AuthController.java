@@ -1,34 +1,32 @@
 package com.web.jwtauth.controllers;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
+import javax.servlet.http.HttpServletRequest;
+import javax.transaction.Transactional;
 import javax.validation.Valid;
 
+import com.web.jwtauth.exception.TokenRefreshException;
+import com.web.jwtauth.models.*;
+import com.web.jwtauth.payload.request.*;
+import com.web.jwtauth.payload.response.StatusReponse;
+import com.web.jwtauth.payload.response.TokenRefreshResponse;
+import com.web.jwtauth.repository.*;
+import com.web.jwtauth.security.services.RefreshTokenService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.web.bind.annotation.CrossOrigin;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.util.StringUtils;
+import org.springframework.web.bind.annotation.*;
 
-import com.web.jwtauth.models.ERole;
-import com.web.jwtauth.models.Role;
-import com.web.jwtauth.models.User;
-import com.web.jwtauth.payload.request.LoginRequest;
-import com.web.jwtauth.payload.request.SignupRequest;
 import com.web.jwtauth.payload.response.JwtResponse;
 import com.web.jwtauth.payload.response.MessageResponse;
-import com.web.jwtauth.repository.RoleRepository;
-import com.web.jwtauth.repository.UserRepository;
 import com.web.jwtauth.security.jwt.JwtUtils;
 import com.web.jwtauth.security.services.UserDetailsImpl;
 
@@ -43,13 +41,28 @@ public class AuthController {
     UserRepository userRepository;
 
     @Autowired
+    CartRepository cartRepository;
+
+    @Autowired
+    CartItemRepository cartItemRepository;
+
+    @Autowired
     RoleRepository roleRepository;
+
+    @Autowired
+    SessionRepository sessionRepository;
+
+    @Autowired
+    RefreshTokenRepository refreshTokenRepository;
 
     @Autowired
     PasswordEncoder encoder;
 
     @Autowired
     JwtUtils jwtUtils;
+
+    @Autowired
+    RefreshTokenService refreshTokenService;
 
     @PostMapping("/signin")
     public ResponseEntity<?> authenticateUser(@Valid @RequestBody LoginRequest loginRequest) {
@@ -58,18 +71,175 @@ public class AuthController {
                 new UsernamePasswordAuthenticationToken(loginRequest.getUsername(), loginRequest.getPassword()));
 
         SecurityContextHolder.getContext().setAuthentication(authentication);
-        String jwt = jwtUtils.generateJwtToken(authentication);
-
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
+        String jwt = jwtUtils.generateJwtToken(userDetails);
+
+
         List<String> roles = userDetails.getAuthorities().stream()
                 .map(item -> item.getAuthority())
                 .collect(Collectors.toList());
 
+        RefreshToken refreshToken = refreshTokenService.createRefreshToken(userDetails.getId());
         return ResponseEntity.ok(new JwtResponse(jwt,
+                refreshToken.getToken(),
                 userDetails.getId(),
                 userDetails.getUsername(),
                 userDetails.getEmail(),
                 roles));
+    }
+
+    @PostMapping("/refreshtoken")
+    public ResponseEntity<?> refreshtoken(@Valid @RequestBody TokenRefreshRequest request) {
+        String requestRefreshToken = request.getRefreshToken();
+
+        return refreshTokenService.findByToken(requestRefreshToken)
+                .map(refreshTokenService::verifyExpiration)
+                .map(RefreshToken::getUser)
+                .map(user -> {
+                    String token = jwtUtils.generateTokenFromUsername(user.getEmail());
+                    return ResponseEntity.ok().body(new TokenRefreshResponse(token, requestRefreshToken)) ;
+                })
+                .orElseThrow(() -> new TokenRefreshException(requestRefreshToken,
+                        "Refresh token is not in database!"));
+    }
+
+    @PutMapping("/changePassword")
+    @PreAuthorize("hasRole('USER')")
+    public ResponseEntity<?> changePassword(@RequestBody ChangePasswordRequest changePasswordRequest, HttpServletRequest httpServletRequest){
+        String newPassword = changePasswordRequest.getPassword();
+        String oldPassword = changePasswordRequest.getOldPassword();
+
+        String headerAuth = httpServletRequest.getHeader("Authorization");
+        String jwt = null;
+        String username = null;
+        if (StringUtils.hasText(headerAuth) && headerAuth.startsWith("Bearer ")) {
+            jwt =  headerAuth.substring(7, headerAuth.length());
+        }
+        if (jwt != null && jwtUtils.validateJwtToken(jwt)) {
+            username = jwtUtils.getUserNameFromJwtToken(jwt);
+        }
+        Optional<User> user = userRepository.findByEmail(username);
+        if (user.isPresent()) {
+            System.out.println(encoder.matches(oldPassword,user.get().getPassword()));
+            if(encoder.matches(oldPassword,user.get().getPassword())) {
+                user.get().setPassword(encoder.encode(newPassword));
+                userRepository.save(user.get());
+                return ResponseEntity.ok().body(new StatusReponse(true));
+            }
+            else {
+                return ResponseEntity.badRequest().body(new StatusReponse(false));
+            }
+        }
+        return ResponseEntity.badRequest().body(new MessageResponse("Not authorized"));
+    }
+
+    @PostMapping("/addSession")
+    @PreAuthorize("hasRole('USER')")
+    public ResponseEntity<?> addSession(@RequestBody AddSessionRequest addSessionRequest, HttpServletRequest httpServletRequest){
+        String time = addSessionRequest.getTime();
+        String duration = addSessionRequest.getDuration();
+        String date = addSessionRequest.getDate();
+        String room = addSessionRequest.getRoom();
+
+        String headerAuth = httpServletRequest.getHeader("Authorization");
+        String jwt = null;
+        String username = null;
+        if (StringUtils.hasText(headerAuth) && headerAuth.startsWith("Bearer ")) {
+            jwt =  headerAuth.substring(7, headerAuth.length());
+        }
+        if (jwt != null && jwtUtils.validateJwtToken(jwt)) {
+            username = jwtUtils.getUserNameFromJwtToken(jwt);
+        }
+        Optional<User> user = userRepository.findByEmail(username);
+        if (user.isPresent()) {
+            Session session = new Session(time,duration,date,room,user.get());
+            sessionRepository.save(session);
+            return ResponseEntity.ok().body(new StatusReponse(true));
+        }
+        return ResponseEntity.badRequest().body(new MessageResponse("Not authorized"));
+    }
+
+    @Transactional
+    @PostMapping("/deleteUser")
+    @PreAuthorize("hasRole('USER')")
+    public ResponseEntity<?> deleteUser(HttpServletRequest httpServletRequest){
+
+        String headerAuth = httpServletRequest.getHeader("Authorization");
+        String jwt = null;
+        String username = null;
+        if (StringUtils.hasText(headerAuth) && headerAuth.startsWith("Bearer ")) {
+            jwt =  headerAuth.substring(7, headerAuth.length());
+        }
+        if (jwt != null && jwtUtils.validateJwtToken(jwt)) {
+            username = jwtUtils.getUserNameFromJwtToken(jwt);
+        }
+        Optional<User> user = userRepository.findByEmail(username);
+        if (user.isPresent()) {
+            Optional<Cart> cart = cartRepository.findByUser(user.get());
+            if (cart.isPresent()) {
+                Set<CartItem> cartItems = cart.get().getCartItems();
+                Set<CartItem> cartItemSet = new HashSet<>();
+                cartItemRepository.deleteAll(cartItems);
+                cart.get().setCartItems(cartItemSet);
+                cartRepository.delete(cart.get());
+            }
+            Set<Role> roleSet = new HashSet<>();
+            user.get().setRoles(roleSet);
+            refreshTokenRepository.deleteAllByUser(user.get());
+            sessionRepository.deleteAllByUser(user.get());
+            userRepository.delete(user.get());
+            return ResponseEntity.ok().body(new StatusReponse(true));
+        }
+        return ResponseEntity.badRequest().body(new MessageResponse("Not authorized"));
+    }
+
+    @GetMapping("/getSessions")
+    @PreAuthorize("hasRole('USER')")
+    public ResponseEntity<?> getSessions(HttpServletRequest httpServletRequest){
+        String headerAuth = httpServletRequest.getHeader("Authorization");
+        String jwt = null;
+        String username = null;
+        if (StringUtils.hasText(headerAuth) && headerAuth.startsWith("Bearer ")) {
+            jwt =  headerAuth.substring(7, headerAuth.length());
+        }
+        if (jwt != null && jwtUtils.validateJwtToken(jwt)) {
+            username = jwtUtils.getUserNameFromJwtToken(jwt);
+        }
+        Optional<User> user = userRepository.findByEmail(username);
+        if (user.isPresent()) {
+            List<Session> sessions = sessionRepository.findSessionsByUser(user.get());
+            return ResponseEntity.ok().body(sessions);
+        }
+        return ResponseEntity.badRequest().body(new MessageResponse("Not authorized"));
+    }
+
+    @PutMapping("/changeEmail")
+    @PreAuthorize("hasRole('USER')")
+    public ResponseEntity<?> changePassword(@RequestBody ChangeEmailRequest changeEmailRequest, HttpServletRequest httpServletRequest){
+        String password = changeEmailRequest.getPassword();
+        String newEmail = changeEmailRequest.getEmail();
+
+        String headerAuth = httpServletRequest.getHeader("Authorization");
+        String jwt = null;
+        String username = null;
+        if (StringUtils.hasText(headerAuth) && headerAuth.startsWith("Bearer ")) {
+            jwt =  headerAuth.substring(7, headerAuth.length());
+        }
+        if (jwt != null && jwtUtils.validateJwtToken(jwt)) {
+            username = jwtUtils.getUserNameFromJwtToken(jwt);
+        }
+        Optional<User> user = userRepository.findByEmail(username);
+        if (user.isPresent()) {
+            if(user.get().getPassword().equals(encoder.encode(password))) {
+                user.get().setEmail(newEmail);
+                userRepository.save(user.get());
+                return ResponseEntity.ok().body(new StatusReponse(true));
+            }
+            else {
+                return ResponseEntity.badRequest().body(new StatusReponse(false));
+            }
+        }
+        return ResponseEntity.badRequest().body(new MessageResponse("Not authorized"));
     }
 
     @PostMapping("/signup")
@@ -87,7 +257,7 @@ public class AuthController {
         }
 
         // Create new user's account
-        User user = new User(signUpRequest.getUsername(),
+        User user = new User(//signUpRequest.getUsername(),
                 signUpRequest.getEmail(),
                 encoder.encode(signUpRequest.getPassword()));
 

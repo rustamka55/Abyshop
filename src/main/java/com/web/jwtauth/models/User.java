@@ -23,9 +23,9 @@ public class User {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @NotBlank
-    @Size(min = 3, max = 20)
-    private String username;
+    //@NotBlank
+    //@Size(min = 3, max = 20)
+    //private String username;
 
     @NotBlank
     @Size(max = 50)
@@ -42,8 +42,9 @@ public class User {
     private Set<Role> roles = new HashSet<>();
 
 
-    public User(String username, String email, String password) {
-        this.username = username;
+    public User(//String username,
+                String email, String password) {
+        //this.username = username;
         this.email = email;
         this.password = password;
     }
