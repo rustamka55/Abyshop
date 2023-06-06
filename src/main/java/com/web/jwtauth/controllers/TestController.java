@@ -158,6 +158,18 @@ public class TestController {
         return ResponseEntity.ok(productRepository.findAll());
     }
 
+    @GetMapping("getProducts/byCat={id}")
+    @PermitAll
+    public ResponseEntity<?> getProductsByCat(@PathVariable Long id){
+        Optional<ProductCategory> productCategory = categoryRepository.findById(id);
+        List<Product> products = new ArrayList<>();
+        if (productCategory.isPresent()) {
+            products = productRepository.findByProductCategory(productCategory.get());
+        }
+        return ResponseEntity.ok(products);
+    }
+
+
     @GetMapping("getProduct/{id}")
     @PermitAll
     public ResponseEntity<?> getProduct(@PathVariable Long id){
